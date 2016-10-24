@@ -90,7 +90,7 @@ int main()
              break;
          ptrace(PTRACE_GETREGS, child, NULL, &regs);
 
-         printf("orig_rax: %llu\n", regs.orig_rax);
+         //printf("orig_rax: %llu\n", regs.orig_rax);
          if(regs.orig_rax == SYS_write) {
             if(toggle == 0) {
                toggle = 1;
