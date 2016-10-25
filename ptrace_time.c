@@ -22,9 +22,8 @@
 #include <string.h>
 #include <errno.h>
 
-char *get_string(pid_t child, unsigned long addr){
+void get_string(pid_t child, unsigned long addr, char *val){
     /* from nelhage/ministrace */
-    char *val = malloc(4096);
     int allocated = 4096;
     int read = 0;
     unsigned long tmp;
@@ -43,42 +42,25 @@ char *get_string(pid_t child, unsigned long addr){
             break;
             read += sizeof tmp;
         }
-        return val;
 }
 
-
-void getdata(pid_t child, long addr,
-                     char *str, int len)
-{
-    int long_size = sizeof(long);
-    char *laddr;
-    int i, j;
-    union u {
-        long val;
-        char chars[long_size];
-    }data;
-    i = 0;
-    j = len / long_size;
-    laddr = str;
-    while(i < j) {
-        data.val = ptrace(PTRACE_PEEKDATA,
-        child, addr + i * 4, NULL);
-        memcpy(laddr, data.chars, long_size);
-        ++i;
-        laddr += long_size;
+/**
+ * rax is return call - 0 if success, -1 if failure
+ * rdi is the timeval data struct
+ */
+void get_time(pid_t child, long long unsigned int rax, long long unsigned int rdi){
+    if( rax!=0 ){
+        return;
     }
-    j = len % long_size;
-    if(j != 0) {
-        data.val = ptrace(PTRACE_PEEKDATA, child, addr + i * 4, NULL);
-        memcpy(laddr, data.chars, j);
-    }
-    str[len] = '\0';
+    //TODO: get from central location
+    ptrace(PTRACE_POKEDATA, child, rdi, 0);
 }
 
 
 void watch_child(pid_t child){
     struct user_regs_struct regs;
     int status;
+    int entering=1;
     while(1) {
         wait(&status);
         if(WIFEXITED(status)){
@@ -86,10 +68,48 @@ void watch_child(pid_t child){
         }
         ptrace(PTRACE_GETREGS, child, NULL, &regs);
         //printf( "sys_call: %llu \n", regs.orig_rax );
+        switch( regs.orig_rax ){
+            case SYS_write:
+                break;
+            case SYS_gettimeofday:{
+                if( entering ){
+                    printf("Entering ");
+                    entering = 0;
+                }
+                else{
+                    printf("Exiting ");
+                    entering = 1;
+                    get_time(child, regs.rax, regs.rdi );
+                }
+                break;
+            }
+            case SYS_open:{
+                char *filename = malloc(4096);
+                get_string(child, regs.rdi, filename);
+                if( strcmp(filename, "/etc/localtime")==0 ){
+                    //printf( "open(\"%s\")\n", filename );
+                    //TODO: make sure this call is uniform
+                }
+                free(filename);
+            }
+            default:
+                break;
+
+
+        }
         if(regs.orig_rax == SYS_write) {
-            printf("Sys_writing\n");
+            //printf("Sys_writing\n");
         } else if(regs.orig_rax == SYS_gettimeofday) {
-            printf("gettimeoftime\n");
+            if( entering ){
+                printf("Entering ");
+                entering = 0;
+            }
+            else{
+                printf("Exiting ");
+                entering = 1;
+                get_time(child, regs.rax, regs.rdi );
+            }
+            //printf("gettimeoftime\n");
         } else if(regs.orig_rax == SYS_time) {
             printf("time\n");
         } else if(regs.orig_rax == SYS_times) {
@@ -100,34 +120,46 @@ void watch_child(pid_t child){
             printf("utimes\n");
         } else if(regs.orig_rax == SYS_clock_gettime) {
             printf("clock_gettime\n");
+        } else if(regs.orig_rax == SYS_clock_settime) {
+            printf("clock_settime\n");
+        } else if(regs.orig_rax == SYS_clock_getres) {
+            printf("clock_getres\n");
         } else if(regs.orig_rax == SYS_open) {
-            char *filename1 = get_string(child, regs.rdi);
-            if( strcmp(filename1, "/etc/localtime")==0 ){
-                printf( "open(\"%s\")\n", filename1 );
+            char *filename = malloc(4096);
+            get_string(child, regs.rdi, filename);
+            if( strcmp(filename, "/etc/localtime")==0 ){
+                //printf( "open(\"%s\")\n", filename );
+                //TODO: make sure this call is uniform
             }
-            free(filename1);
+            free(filename);
         } else {
             //Do nothing
         }
  
-        //actuallly run system call
+        //continue until next syscall entry/exit
         ptrace(PTRACE_SYSCALL, child, NULL, NULL);
       }
 
 }
 
-int main()
+int main( int argc, char *argv[] )
 {
-   pid_t child;
-   child = fork();
-   if(child == 0) {
-      ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-      if( execl("/home/liedetector/ptrace/time", "time", (char *)NULL)==-1){
-        printf("process failed\n");
-      }
-   }
-   else {
-      watch_child(child);
-   }
-   return 0;
+    if( argc !=2 ){
+        printf( "Usage %s <file_to_trace>\n", argv[0] );
+        return 0;
+    }
+    char *program_to_run = argv[1];
+    pid_t child;
+    child = fork();
+    if(child == 0) {
+       ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+       printf( "Running: %s\n", program_to_run);
+       if( execl( program_to_run, program_to_run, (char *)NULL)==-1){ //("/home/liedetector/ptrace/time"
+         printf("process failed\n");
+       }
+    }
+    else {
+       watch_child(child);
+    }
+    return 0;
 }

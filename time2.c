@@ -12,6 +12,7 @@ int main(void) {
     curtime=tv.tv_sec;
 
     strftime(buffer,30,"%m-%d-%Y %T.", localtime(&curtime));
+    printf("tv: %llu\n", &tv);
     printf("%s%ld\n", buffer, tv.tv_usec);
 
     return 0;
