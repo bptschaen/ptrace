@@ -94,48 +94,7 @@ void watch_child(pid_t child){
             }
             default:
                 break;
-
-
         }
-        if(regs.orig_rax == SYS_write) {
-            //printf("Sys_writing\n");
-        } else if(regs.orig_rax == SYS_gettimeofday) {
-            if( entering ){
-                printf("Entering ");
-                entering = 0;
-            }
-            else{
-                printf("Exiting ");
-                entering = 1;
-                get_time(child, regs.rax, regs.rdi );
-            }
-            //printf("gettimeoftime\n");
-        } else if(regs.orig_rax == SYS_time) {
-            printf("time\n");
-        } else if(regs.orig_rax == SYS_times) {
-            printf("times\n");
-        } else if(regs.orig_rax == SYS_utime) {
-            printf("utime\n");
-        } else if(regs.orig_rax == SYS_utimes) {
-            printf("utimes\n");
-        } else if(regs.orig_rax == SYS_clock_gettime) {
-            printf("clock_gettime\n");
-        } else if(regs.orig_rax == SYS_clock_settime) {
-            printf("clock_settime\n");
-        } else if(regs.orig_rax == SYS_clock_getres) {
-            printf("clock_getres\n");
-        } else if(regs.orig_rax == SYS_open) {
-            char *filename = malloc(4096);
-            get_string(child, regs.rdi, filename);
-            if( strcmp(filename, "/etc/localtime")==0 ){
-                //printf( "open(\"%s\")\n", filename );
-                //TODO: make sure this call is uniform
-            }
-            free(filename);
-        } else {
-            //Do nothing
-        }
- 
         //continue until next syscall entry/exit
         ptrace(PTRACE_SYSCALL, child, NULL, NULL);
       }
